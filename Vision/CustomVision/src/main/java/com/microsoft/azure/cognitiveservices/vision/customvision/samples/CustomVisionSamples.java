@@ -1,11 +1,11 @@
-/**
+/*
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See License.txt in the project root for
  * license information.
  */
 
 package com.microsoft.azure.cognitiveservices.vision.customvision.samples;
-
+import java.io.*;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -81,12 +81,12 @@ public class CustomVisionSamples {
             // create hemlock tag
             Tag hemlockTag = trainer.createTag()
                 .withProjectId(project.id())
-                .withName("Hemlock")
+                .withName("porthole")
                 .execute();
             // create cherry tag
             Tag cherryTag = trainer.createTag()
                 .withProjectId(project.id())
-                .withName("Japanese Cherry")
+                .withName("crack")
                 .execute();
             // </snippet_tags>
 
@@ -139,54 +139,101 @@ public class CustomVisionSamples {
 	    // 폴더명과 사진파일의 이름을 명시해줘야 예측이 가능하다.
 	    // 밑의 예제는 Test폴더에서 test_image.jpg와 test_image2.jpg 단 두개의 사진을 예측한 것이다.
             // load test image
-            byte[] testImage = GetImage("/Test", "test_image.jpg");
+            // byte[] testImage = GetImage("/Test", "test_image.jpg");
+	    // 여기서 폴더내의 모든 파일들을 읽어야함.
+	    File path2 = new File("~/cap/images/");
+	    //File[] fileList = path.listFiles();
+	    String fileList[] = path2.list();
+
+	    if(fileList == null){
+		    System.exit(0);
+	    }
+	    if(fileList.length > 0){
+		    for(int i=0;i< fileList.length;i++){
+			    System.out.println(fileList[i]);
+		    }
+	    }
+
+	    byte[][] testImage = null;
+	    
+	    testImage = new byte[fileList.length][];
+	    
+	    for(int i=0;i<fileList.length;i++){
+		    testImage[i] = GetImage("~/cap/images", fileList[i]);
+	    }
+
+	    for(int i=0;i<fileList.length;i++){
+		    double x=0.0;
+		    double y=0.0;
+		    x++;
+		    y++;
+		    ImagePrediction results = predictor.predictions().classifyImage()
+			    .withProjectId(project.id())
+			    .withPublishedName(publishedModelName)
+			    .withImageData(testImage[i])
+			    .execute();
+		    for(Prediction prediction: results.predictions()){
+			    if(prediction.tagName() == "porthole"){
+				    if(prediction.probability() * 100.0f >= 90){
+					    // porthole일 확률이 90프로가 넘으면 DB에 저장
+					    RoadDao roadDao = new RoadDao();
+					    Road road = roadDao.getRoad(x,y);
+					    if(road == null){
+						    roadDao.setRoad(x,y,prediction.tagName());
+					    }
+					    else{
+						    roadDao.setRoadTagName(x,y,prediction.tagName());
+					    }
+				    }
+				    else{
+					    RoadDao roadDao = new RoadDao();
+					    Road road = roadDao.getRoad(x,y);
+					    if(road != null){
+						    if(road.getTagName() == "porthole"){
+							    roadDao.deleteRoad(x,y);
+						    }
+					    }
+				    }
+			    }
+
+			    if(prediction.tagName() == "crack"){
+				    if(prediction.probability() * 100.0f >= 90){
+					    // crack일 확률이 90프로가 넘으면 DB에 저장
+					    RoadDao roadDao = new RoadDao();
+					    Road road = roadDao.getRoad(x,y);
+					    if(road == null){
+						    roadDao.setRoad(x,y,prediction.tagName());
+					    }
+				    }
+				    else{
+					    RoadDao roadDao = new RoadDao();
+					    Road road = roadDao.getRoad(x,y);
+					    if(road != null){
+						    if(road.getTagName() == "crack"){
+							    roadDao.deleteRoad(x,y);
+						    }
+					    }
+				    }
+			    }
+			    //System.out.println(String.format("\t%s: %.2f%%", prediction.tagName(), prediction.probability() * 100.0f));
+		    }
+	    }
+
 
             // predict
-            ImagePrediction results = predictor.predictions().classifyImage()
-                .withProjectId(project.id())
-                .withPublishedName(publishedModelName)
-                .withImageData(testImage)
-                .execute();
-	    int i=1;
-	    System.out.println(i+"번 예측");
-            for (Prediction prediction: results.predictions())
-            {
-                System.out.println(String.format("\t%s: %.2f%%", prediction.tagName(), prediction.probability() * 100.0f));
-            }
-
-	    byte[] testImage2 = GetImage("/Test", "test_image2.jpg");
-
-            // predict
-            ImagePrediction results2 = predictor.predictions().classifyImage()
-                .withProjectId(project.id())
-                .withPublishedName(publishedModelName)
-                .withImageData(testImage2)
-                .execute();
-
-            i=2;
-	    System.out.println(i+"번 예측");
-            for (Prediction prediction: results2.predictions())
-            {
-                System.out.println(String.format("\t%s: %.2f%%", prediction.tagName(), prediction.probability() * 100.0f));
-            }
-
+            //ImagePrediction results = predictor.predictions().classifyImage()
+            //    .withProjectId(project.id())
+            //    .withPublishedName(publishedModelName)
+            //    .withImageData(testImage)
+            //    .execute();
+	    //int i=1;
+	    //System.out.println(i+"번 예측");
+            //for (Prediction prediction: results.predictions())
+            //{
+            //    System.out.println(String.format("\t%s: %.2f%%", prediction.tagName(), prediction.probability() * 100.0f));
+            //}
 
             // </snippet_predict>
-	    //
-	    //
-	    //
-	    // JDBC로 예측결과들을 DB에 저장하기
-	    double x = 0.0;
-	    double y = 0.0;
-	    // x와 y좌표를 설정해야하는데 지금은 모르니까 0으로 해놓음.
-
-	    RoadDao roadDao = new RoadDao();
-	    roadDao.setRoad(x,y);
-	    //
-	    // 수정해야하는 부분
-	    //
-	    //
-	    //
 	    // 예측이 끝나고 종료해줘야 Thread에러가 생기지 않는다.
 	    System.exit(0);
         } catch (Exception e) {

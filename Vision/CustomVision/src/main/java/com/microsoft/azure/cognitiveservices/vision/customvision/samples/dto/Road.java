@@ -3,14 +3,14 @@ package com.microsoft.azure.cognitiveservices.vision.customvision.samples.dto;
 public class Road {
 	private double x;
 	private double y;
-	private int number;
+	private String tagName;
 	
 	public Road() {}
 	
-	public Road(double x, double y, int number) {
+	public Road(double x, double y, String tagName) {
 		this.x = x;
-		this.y= y;
-		this.number = number;
+		this.y = y;
+		this.tagName = tagName;
 	}
 	
 	public double getX() {
@@ -25,15 +25,15 @@ public class Road {
 	public void setY(double y) {
 		this.y = y;
 	}
-	public int getNumber() {
-		return number;
+	public String getTagName() {
+		return tagName;
 	}
-	public void setNumber(int number) {
-		this.number = number;
+	public void setTagName(String tagName) {
+		this.tagName = tagName;
 	}
 	@Override
 	public String toString() {
-		return "Road [x=" + x + ", y=" + y + ", number=" + number + "]";
+		return "Road [x=" + x + ", y=" + y + ", tagName=" + tagName + "]";
 	}
 	
 }
