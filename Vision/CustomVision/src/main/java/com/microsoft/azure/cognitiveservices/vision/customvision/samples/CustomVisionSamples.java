@@ -31,10 +31,12 @@ import com.microsoft.azure.cognitiveservices.vision.customvision.prediction.Cust
 import com.microsoft.azure.cognitiveservices.vision.customvision.prediction.CustomVisionPredictionManager;
 import com.microsoft.azure.cognitiveservices.vision.customvision.training.models.Tag;
 
+import java.util.ArrayList;
 import java.util.List;
 import com.microsoft.azure.cognitiveservices.vision.customvision.samples.dao.RoadDao;
 import com.microsoft.azure.cognitiveservices.vision.customvision.samples.dto.Road;
-
+import com.microsoft.azure.cognitiveservices.vision.customvision.training.models.*;
+import java.lang.Object;
 
 public class CustomVisionSamples {
     /**
@@ -67,51 +69,73 @@ public class CustomVisionSamples {
     public static void ImageClassification_Sample(CustomVisionTrainingClient trainClient, CustomVisionPredictionClient predictor) {
         try {
             // <snippet_create>
-            System.out.println("ImageClassification Sample");
+	    // 프로젝트를 생성하는 부분이다.
+            //System.out.println("ImageClassification Sample");
             Trainings trainer = trainClient.trainings();
 
-            System.out.println("Creating project...");
-            Project project = trainer.createProject()
-                .withName("Sample Java Project")
-                .execute();
+            //System.out.println("Creating project...");
+            //Project project = trainer.createProject()
+            //    .withName("Sample Java Project")
+            //    .execute();
             // </snippet_create>
+	    //현재 존재하는 project중에 이름이 Sample Java Project인 프로젝트를 가져온다.
+	    List<Project> projectlist = trainer.getProjects();
+	    Project project = null;
+	    for(int i=0;i<projectlist.size();i++){
+		    project = projectlist.get(i);
+		    if(project.name() == "Sample Java Project"){
+			    break;
+		    }
+	    }
 
+	    // 가져온 Project의 Tag들을 가져온다. porthole tag와 crack tag를 가져왔다.
+	    List<Tag> taglist = trainer.getTags(project.id(), null);
+	    Tag portholeTag = taglist.get(0);
+	    Tag crackTag = taglist.get(1);
             // <snippet_tags>
 	    // 태그를 생성하는 부분
-            // create hemlock tag
-            Tag hemlockTag = trainer.createTag()
-                .withProjectId(project.id())
-                .withName("porthole")
-                .execute();
-            // create cherry tag
-            Tag cherryTag = trainer.createTag()
-                .withProjectId(project.id())
-                .withName("crack")
-                .execute();
+            // create porthole tag
+            //Tag hemlockTag = trainer.createTag()
+            //    .withProjectId(/*project.id()*/projectid)
+            //    .withName("porthole")
+            //    .execute();
+            // create crack tag
+            //Tag cherryTag = trainer.createTag()
+            //    .withProjectId(/*project.id()*/projectid)
+            //    .withName("crack")
+            //    .execute();
             // </snippet_tags>
 
             // <snippet_upload
 	    // 학습할 이미지를 업로드 하는 부분
 	    // 원하는 태그와 이미지를 엮는다.
             System.out.println("Adding images...");
-            for (int i = 1; i <= 10; i++) {
+            for (int i = 1; i <= 13; i++) {
                 String fileName = "hemlock_" + i + ".jpg";
                 byte[] contents = GetImage("/Hemlock", fileName);
-                AddImageToProject(trainer, project, fileName, contents, hemlockTag.id(), null);
+                AddImageToProject(trainer, project, fileName, contents, /*hemlockTag.id()*/portholeTag.id(), null);
             }
 
             for (int i = 1; i <= 10; i++) {
                 String fileName = "japanese_cherry_" + i + ".jpg";
                 byte[] contents = GetImage("/Japanese Cherry", fileName);
-                AddImageToProject(trainer, project, fileName, contents, cherryTag.id(), null);
+                AddImageToProject(trainer, project, fileName, contents, /*cherryTag.id()*/crackTag.id(), null);
             }
             // </snippet_upload>
 
             // <snippet_train>
 	    // 학습하는 부분
             System.out.println("Training...");
+	    // 과거에 만들어놨던 iteration을 지우고 새로 학습한 iteration을 publish한다.
+	    // 과거에 만들어진 iteration에 추가로 training을 못시키는 것 같다.
+	    List<Iteration> iterationlist = trainer.getIterations(project.id());
+	    if(iterationlist != null){
+		    Iteration past_iteration = iterationlist.get(0);
+		    trainer.unpublishIteration(project.id(), past_iteration.id());
+		    trainer.deleteIteration(project.id(), past_iteration.id());
+	    }
             Iteration iteration = trainer.trainProject(project.id(), new TrainProjectOptionalParameter());
-
+	    //Iteration iteration = past_iteration;
             while (iteration.status().equals("Training"))
             {
                 System.out.println("Training Status: "+ iteration.status());
@@ -123,7 +147,9 @@ public class CustomVisionSamples {
             // The iteration is now trained. Publish it to the prediction endpoint.
             String publishedModelName = "myModel";
             String predictionResourceId = System.getenv("AZURE_CUSTOMVISION_PREDICTION_ID");
-            trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
+            //trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
+	    //trainer.updateIteration(project.id(), iteration.id(), publishedModelName);
+	    trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
             // </snippet_train>
 
             // use below for url
@@ -141,28 +167,25 @@ public class CustomVisionSamples {
             // load test image
             // byte[] testImage = GetImage("/Test", "test_image.jpg");
 	    // 여기서 폴더내의 모든 파일들을 읽어야함.
-	    File path2 = new File("~/cap/images/");
+	    File path2 = new File("/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images");
 	    //File[] fileList = path.listFiles();
-	    String fileList[] = path2.list();
-
+	    String dirName = "/Predict_images";
+	    String fileList[] = path2.list(null);
 	    if(fileList == null){
+		    System.out.print("읽을 파일이 없습니다.");
 		    System.exit(0);
 	    }
-	    if(fileList.length > 0){
-		    for(int i=0;i< fileList.length;i++){
-			    System.out.println(fileList[i]);
-		    }
-	    }
+	    int cntFiles = fileList.length;
 
-	    byte[][] testImage = null;
+	    ArrayList<byte[]> testImage = new ArrayList<byte[]>();
 	    
-	    testImage = new byte[fileList.length][];
-	    
-	    for(int i=0;i<fileList.length;i++){
-		    testImage[i] = GetImage("~/cap/images", fileList[i]);
+	    for(int i=0;i<cntFiles;i++){
+		    System.out.println(dirName + " " + fileList[i]);
+		    byte[] temp = GetImage(dirName, fileList[i]);
+		    testImage.add(temp);
 	    }
-
-	    for(int i=0;i<fileList.length;i++){
+	    //System.exit(0);
+	    for(int i=0;i<cntFiles;i++){
 		    double x=0.0;
 		    double y=0.0;
 		    x++;
@@ -170,7 +193,7 @@ public class CustomVisionSamples {
 		    ImagePrediction results = predictor.predictions().classifyImage()
 			    .withProjectId(project.id())
 			    .withPublishedName(publishedModelName)
-			    .withImageData(testImage[i])
+			    .withImageData(testImage.get(i))
 			    .execute();
 		    for(Prediction prediction: results.predictions()){
 			    if(prediction.tagName() == "porthole"){
