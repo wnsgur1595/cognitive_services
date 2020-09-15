@@ -47,11 +47,11 @@ public class CustomVisionSamples {
 
 
     // 일단 이 부분이 실행된다.
-    public static void runSample(CustomVisionTrainingClient trainer, CustomVisionPredictionClient predictor) {
+    public static void runSample(CustomVisionTrainingClient trainer, CustomVisionPredictionClient predictor, int jobNumber) {
         try {
             // This demonstrates how to create an image classification project, upload images,
             // train it and make a prediction.
-            ImageClassification_Sample(trainer, predictor);
+            ImageClassification_Sample(trainer, predictor, jobNumber);
 
             // This demonstrates how to create an object detection project, upload images,
             // train it and make a prediction.
@@ -66,7 +66,7 @@ public class CustomVisionSamples {
     // 프로젝트는 뭐로 학습을 시키냐에 따라 달라질수있으며, 무료버전은 2개만 생성가능한것같다.
     // 학습을 시키고 예측을 할 때, 모든 태그에 대한 예측을 한다.
     // 또한, 기본적으로 폴더이름과 파일 이름을 알아야만 예측이 가능한 것 같다.
-    public static void ImageClassification_Sample(CustomVisionTrainingClient trainClient, CustomVisionPredictionClient predictor) {
+    public static void ImageClassification_Sample(CustomVisionTrainingClient trainClient, CustomVisionPredictionClient predictor, int jobNumber) {
         try {
             // <snippet_create>
 	    // 프로젝트를 생성하는 부분이다.
@@ -78,20 +78,54 @@ public class CustomVisionSamples {
             //    .withName("Sample Java Project")
             //    .execute();
             // </snippet_create>
+	    // 현재 만들어진 Project가 없으면 만들고, 있으면
 	    //현재 존재하는 project중에 이름이 Sample Java Project인 프로젝트를 가져온다.
 	    List<Project> projectlist = trainer.getProjects();
 	    Project project = null;
-	    for(int i=0;i<projectlist.size();i++){
-		    project = projectlist.get(i);
-		    if(project.name() == "Sample Java Project"){
-			    break;
+	    if(projectlist.size() == 0){
+		    System.out.println("Creating project...");
+		    project = trainer.createProject()
+			    .withName("Sample Java Project")
+			    .execute();
+	    }
+	    else{
+		    for(int i=0;i<projectlist.size();i++){
+			    project = projectlist.get(i);
+			    if(project.name().equals("Sample Java Project")){
+				    break;
+			    }
 		    }
 	    }
 
 	    // 가져온 Project의 Tag들을 가져온다. porthole tag와 crack tag를 가져왔다.
+	    // 없으면 만든다.
 	    List<Tag> taglist = trainer.getTags(project.id(), null);
-	    Tag portholeTag = taglist.get(0);
-	    Tag crackTag = taglist.get(1);
+	    Tag portholeTag = null;
+	    Tag crackTag = null;
+	    if(taglist.size() == 0){
+		    portholeTag = trainer.createTag()
+			    .withProjectId(project.id())
+			    .withName("porthole")
+			    .execute();
+		    crackTag = trainer.createTag()
+			    .withProjectId(project.id())
+			    .withName("crack")
+			    .execute();
+	    }
+	    else{
+		    for(int i=0;i<taglist.size();i++){
+			    portholeTag = taglist.get(i);
+			    if(portholeTag.name().equals("porthole")){
+				    break;
+			    }
+		    }
+		    for(int i=0;i<taglist.size();i++){
+			    crackTag = taglist.get(i);
+			    if(crackTag.name().equals("crack")){
+				    break;
+			    }
+		    }
+	    }
             // <snippet_tags>
 	    // 태그를 생성하는 부분
             // create porthole tag
@@ -109,47 +143,74 @@ public class CustomVisionSamples {
             // <snippet_upload
 	    // 학습할 이미지를 업로드 하는 부분
 	    // 원하는 태그와 이미지를 엮는다.
-            System.out.println("Adding images...");
-            for (int i = 1; i <= 13; i++) {
-                String fileName = "hemlock_" + i + ".jpg";
-                byte[] contents = GetImage("/Hemlock", fileName);
-                AddImageToProject(trainer, project, fileName, contents, /*hemlockTag.id()*/portholeTag.id(), null);
-            }
+	    String publishedModelName = "myModel";
+	    String predictionResourceId = System.getenv("AZURE_CUSTOMVISION_PREDICTION_ID");
+	    if(jobNumber==0){	// Project에 이미지들 추가 + 트레이닝
+	            System.out.println("Adding images...");
+	
+		    File portholePath = new File("/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/porthole");
+	            String portholeDir = "/porthole";
+	            String portholeList[] = portholePath.list(null);
+	            if(portholeList == null){
+	                    System.out.print("읽을 파일이 없습니다.");
+	                    System.exit(0);
+	            }
+	            int cntFiles = portholeList.length;
 
-            for (int i = 1; i <= 10; i++) {
-                String fileName = "japanese_cherry_" + i + ".jpg";
-                byte[] contents = GetImage("/Japanese Cherry", fileName);
-                AddImageToProject(trainer, project, fileName, contents, /*cherryTag.id()*/crackTag.id(), null);
-            }
-            // </snippet_upload>
+	            for (int i = 0; i < cntFiles; i++) {
+	                String fileName = portholeList[i];
+	                byte[] contents = GetImage(portholeDir, fileName);
+	                AddImageToProject(trainer, project, fileName, contents, portholeTag.id(), null);
+	            }
 
-            // <snippet_train>
-	    // 학습하는 부분
-            System.out.println("Training...");
-	    // 과거에 만들어놨던 iteration을 지우고 새로 학습한 iteration을 publish한다.
-	    // 과거에 만들어진 iteration에 추가로 training을 못시키는 것 같다.
-	    List<Iteration> iterationlist = trainer.getIterations(project.id());
-	    if(iterationlist != null){
-		    Iteration past_iteration = iterationlist.get(0);
-		    trainer.unpublishIteration(project.id(), past_iteration.id());
-		    trainer.deleteIteration(project.id(), past_iteration.id());
+		    File crackPath = new File("/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/crack");
+		    String crackDir = "/crack";
+		    String crackList[] = crackPath.list(null);
+		    if(crackList == null){
+			    System.out.print("일을 파일이 없습니다.");
+			    System.exit(0);
+		    }
+		    int cntFiles2 = crackList.length;
+
+	            for (int i = 0; i < cntFiles2; i++) {
+	                String fileName = crackList[i];
+	                byte[] contents = GetImage(crackDir, fileName);
+	                AddImageToProject(trainer, project, fileName, contents, crackTag.id(), null);
+	            }
+	    
+	            // </snippet_upload>
+
+	            // <snippet_train>
+		    // 학습하는 부분
+	            System.out.println("Training...");
+		    // 과거에 만들어놨던 iteration을 지우고 새로 학습한 iteration을 publish한다.
+		    // 과거에 만들어진 iteration에 추가로 training을 못시키는 것 같다.
+		    List<Iteration> iterationlist = trainer.getIterations(project.id());
+		    Iteration iteration = null;
+		    if(iterationlist.size() > 0 && iterationlist.get(0).status().equals("Completed")){
+			    Iteration past_iteration = iterationlist.get(0);
+			    trainer.unpublishIteration(project.id(), past_iteration.id());
+			    trainer.deleteIteration(project.id(), past_iteration.id());
+			    iteration = trainer.trainProject(project.id(), new TrainProjectOptionalParameter());
+		    }
+		    else if(iterationlist.size() > 0 && iterationlist.get(0).status().equals("Training")){
+			    iteration = iterationlist.get(0);
+		    }
+		    else if(iterationlist.size() == 0){
+			    iteration = trainer.trainProject(project.id(), new TrainProjectOptionalParameter());
+		    }
+		    //Iteration iteration = past_iteration;
+	            while (iteration.status().equals("Training"))
+	            {
+	                System.out.println("Training Status: "+ iteration.status());
+	                Thread.sleep(1000);
+	                iteration = trainer.getIteration(project.id(), iteration.id());
+	            }
+	            System.out.println("Training Status: "+ iteration.status());
+	    
+        	    // The iteration is now trained. Publish it to the prediction endpoint.
+		    trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
 	    }
-            Iteration iteration = trainer.trainProject(project.id(), new TrainProjectOptionalParameter());
-	    //Iteration iteration = past_iteration;
-            while (iteration.status().equals("Training"))
-            {
-                System.out.println("Training Status: "+ iteration.status());
-                Thread.sleep(1000);
-                iteration = trainer.getIteration(project.id(), iteration.id());
-            }
-            System.out.println("Training Status: "+ iteration.status());
-
-            // The iteration is now trained. Publish it to the prediction endpoint.
-            String publishedModelName = "myModel";
-            String predictionResourceId = System.getenv("AZURE_CUSTOMVISION_PREDICTION_ID");
-            //trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
-	    //trainer.updateIteration(project.id(), iteration.id(), publishedModelName);
-	    trainer.publishIteration(project.id(), iteration.id(), publishedModelName, predictionResourceId);
             // </snippet_train>
 
             // use below for url
@@ -167,81 +228,194 @@ public class CustomVisionSamples {
             // load test image
             // byte[] testImage = GetImage("/Test", "test_image.jpg");
 	    // 여기서 폴더내의 모든 파일들을 읽어야함.
-	    File path2 = new File("/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images");
-	    //File[] fileList = path.listFiles();
-	    String dirName = "/Predict_images";
-	    String fileList[] = path2.list(null);
-	    if(fileList == null){
-		    System.out.print("읽을 파일이 없습니다.");
-		    System.exit(0);
-	    }
-	    int cntFiles = fileList.length;
+	    if(jobNumber==1){	// 예측만함
+		    File path2 = new File("/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images");
+		    //File[] fileList = path.listFiles();
+		    String dirName = "/Predict_images";
+		    String fileList[] = path2.list(null);
+		    if(fileList == null){
+			    System.out.print("읽을 파일이 없습니다.");
+			    System.exit(0);
+		    }
+		    int cntFiles3 = fileList.length;
 
-	    ArrayList<byte[]> testImage = new ArrayList<byte[]>();
+		    ArrayList<byte[]> testImage = new ArrayList<byte[]>();
 	    
-	    for(int i=0;i<cntFiles;i++){
-		    System.out.println(dirName + " " + fileList[i]);
-		    byte[] temp = GetImage(dirName, fileList[i]);
-		    testImage.add(temp);
-	    }
-	    //System.exit(0);
-	    for(int i=0;i<cntFiles;i++){
-		    double x=0.0;
-		    double y=0.0;
-		    x++;
-		    y++;
-		    ImagePrediction results = predictor.predictions().classifyImage()
-			    .withProjectId(project.id())
-			    .withPublishedName(publishedModelName)
-			    .withImageData(testImage.get(i))
-			    .execute();
-		    for(Prediction prediction: results.predictions()){
-			    if(prediction.tagName() == "porthole"){
-				    if(prediction.probability() * 100.0f >= 90){
-					    // porthole일 확률이 90프로가 넘으면 DB에 저장
-					    RoadDao roadDao = new RoadDao();
-					    Road road = roadDao.getRoad(x,y);
-					    if(road == null){
-						    roadDao.setRoad(x,y,prediction.tagName());
+		    for(int i=0;i<cntFiles3;i++){
+			    byte[] temp = GetImage(dirName, fileList[i]);
+			    testImage.add(temp);
+		    }
+		    //System.exit(0);
+		    double x = 0.0;
+		    double y = 0.0;
+		    int Check1=0; int Check2=0;
+		    for(int i=0;i<cntFiles3;i++){
+			    x++;
+			    y++;
+			    Check1=0; Check2=0;
+			    Prediction pr1 = null; Prediction pr2 = null;
+			    ImagePrediction results = predictor.predictions().classifyImage()
+				    .withProjectId(project.id())
+				    .withPublishedName(publishedModelName)
+				    .withImageData(testImage.get(i))
+				    .execute();
+			    for(int j=0;j<results.predictions().size();j++){
+				    Prediction prediction = results.predictions().get(j);
+				    if(prediction.tagName().equals("porthole")){
+					    pr1 = prediction;
+					    if(prediction.probability() >= 0.9){
+						    Check1 = 1;
 					    }
 					    else{
-						    roadDao.setRoadTagName(x,y,prediction.tagName());
+						    RoadDao roadDao = new RoadDao();
+						    Road road = roadDao.getRoad(x,y);
+						    if(road != null){
+							    if(road.getTagName().equals("porthole")){
+								    roadDao.deleteRoad(x,y);
+							    }
+						    }
 					    }
 				    }
-				    else{
-					    RoadDao roadDao = new RoadDao();
-					    Road road = roadDao.getRoad(x,y);
-					    if(road != null){
-						    if(road.getTagName() == "porthole"){
-							    roadDao.deleteRoad(x,y);
+
+				    if(prediction.tagName().equals("crack")){
+					    pr2 = prediction;
+					    if(prediction.probability() >= 0.9){
+						    Check2 = 1;
+					    }
+					    else{
+						    RoadDao roadDao = new RoadDao();
+						    Road road = roadDao.getRoad(x,y);
+						    if(road != null){
+							    if(road.getTagName().equals("crack")){
+								    roadDao.deleteRoad(x,y);
+							    }
 						    }
 					    }
 				    }
 			    }
 
-			    if(prediction.tagName() == "crack"){
-				    if(prediction.probability() * 100.0f >= 90){
-					    // crack일 확률이 90프로가 넘으면 DB에 저장
+			    if(Check1==1 && Check2==0){
+				    RoadDao roadDao = new RoadDao();
+				    Road road = roadDao.getRoad(x,y);
+				    if(road == null){
+					    roadDao.setRoad(x,y,pr1.probability(),pr1.tagName(),fileList[i]);
+				    }
+				    // 파일 옮기기 ( Predict_images -> Predict_porthole )
+				    String oriFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images/" + fileList[i];
+				    String copyFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_porthole/" + fileList[i];
+				    String copyFilePath2 = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/porthole/" + fileList[i];
+
+				    File oriFile = new File(oriFilePath);
+				    File copyFile = new File(copyFilePath);
+				    File copyFile2 = new File(copyFilePath2);
+
+				    FileInputStream fis = new FileInputStream(oriFile);
+				    FileOutputStream fos = new FileOutputStream(copyFile);
+				    FileOutputStream fos2 = new FileOutputStream(copyFile2);
+
+				    int fileByte = 0;
+
+				    while((fileByte = fis.read()) != -1){
+					    fos.write(fileByte);
+					    fos2.write(fileByte);
+				    }
+				    fis.close();
+				    fos.close();
+				    fos2.close();
+				    oriFile.delete();
+			    }
+			    else if(Check1==0 && Check2==1){
+				    RoadDao roadDao = new RoadDao();
+				    Road road = roadDao.getRoad(x,y);
+				    if(road == null){
+					    roadDao.setRoad(x,y,pr2.probability(),pr2.tagName(),fileList[i]);
+				    }
+				    // 파일 옮기기 ( Predict_images -> Predict_crack )
+				    String oriFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images/" + fileList[i];
+				    String copyFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_crack/" + fileList[i];
+
+				    File oriFile = new File(oriFilePath);
+				    File copyFile = new File(copyFilePath);
+
+				    FileInputStream fis = new FileInputStream(oriFile);
+				    FileOutputStream fos = new FileOutputStream(copyFile);
+
+				    int fileByte = 0;
+
+				    while((fileByte = fis.read()) != -1){
+					    fos.write(fileByte);
+				    }
+				    fis.close();
+				    fos.close();
+				    oriFile.delete();
+			    }
+			    else if(Check1==1 && Check2==1){
+				    if(pr1.probability() >= pr2.probability()){
 					    RoadDao roadDao = new RoadDao();
 					    Road road = roadDao.getRoad(x,y);
 					    if(road == null){
-						    roadDao.setRoad(x,y,prediction.tagName());
+						    roadDao.setRoad(x,y,pr1.probability(),pr1.tagName(),fileList[i]);
 					    }
+					    else{
+						    roadDao.updateRoad(x,y,pr1.probability(),pr1.tagName(),fileList[i]);
+					    }
+					    // 파일 옮기기 ( Predict_images -> Predict_porthole )
+					    String oriFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images/" + fileList[i];
+		                            String copyFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_porthole/" + fileList[i];
+
+		                            File oriFile = new File(oriFilePath);
+		                            File copyFile = new File(copyFilePath);
+
+	        	                    FileInputStream fis = new FileInputStream(oriFile);
+		                            FileOutputStream fos = new FileOutputStream(copyFile);
+
+		                            int fileByte = 0;
+	
+		                            while((fileByte = fis.read()) != -1){
+		                                    fos.write(fileByte);
+		                            }
+		                            fis.close();
+		                            fos.close();
+					    oriFile.delete();
 				    }
 				    else{
 					    RoadDao roadDao = new RoadDao();
 					    Road road = roadDao.getRoad(x,y);
-					    if(road != null){
-						    if(road.getTagName() == "crack"){
-							    roadDao.deleteRoad(x,y);
-						    }
+					    if(road == null){
+						    roadDao.setRoad(x,y,pr2.probability(),pr2.tagName(),fileList[i]);
 					    }
+					    else{
+						    roadDao.updateRoad(x,y,pr2.probability(),pr2.tagName(),fileList[i]);
+					    }
+					    // 파일 옮기기 ( Predict_images -> Predict_crack )
+					    String oriFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images/" + fileList[i];
+		                            String copyFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_crack/" + fileList[i];
+	
+		                            File oriFile = new File(oriFilePath);
+		                            File copyFile = new File(copyFilePath);
+
+		                            FileInputStream fis = new FileInputStream(oriFile);
+		                            FileOutputStream fos = new FileOutputStream(copyFile);
+	
+		                            int fileByte = 0;
+
+		                            while((fileByte = fis.read()) != -1){
+		                                    fos.write(fileByte);
+		                            }
+		                            fis.close();
+		                            fos.close();
+					    oriFile.delete();
 				    }
 			    }
-			    //System.out.println(String.format("\t%s: %.2f%%", prediction.tagName(), prediction.probability() * 100.0f));
+			    else{
+				    // 파일 삭제
+				    String oriFilePath = "/home/whitebox/cognitive-services-java-sdk-samples-master/Vision/CustomVision/src/main/resources/Predict_images/" + fileList[i];
+	
+	                            File oriFile = new File(oriFilePath);
+				    oriFile.delete();
+			    }
 		    }
 	    }
-
 
             // predict
             //ImagePrediction results = predictor.predictions().classifyImage()
@@ -493,8 +667,8 @@ public class CustomVisionSamples {
 
             CustomVisionTrainingClient trainClient = CustomVisionTrainingManager.authenticate("https://{Endpoint}/customvision/v3.0/training/", CustomVisionTrainingClientKey).withEndpoint(Endpoint);
             CustomVisionPredictionClient predictClient = CustomVisionPredictionManager.authenticate("https://{Endpoint}/customvision/v3.0/prediction/", predictionApiKey).withEndpoint(Endpoint);
-
-            runSample(trainClient, predictClient);
+	    
+            runSample(trainClient, predictClient, 1);	// jobNumber = 0 -> 프로젝트에 이미지 추가하고 트레이닝, jobNumber = 1 -> 예측만
         } catch (Exception e) {
             System.out.println(e.getMessage());
             e.printStackTrace();
